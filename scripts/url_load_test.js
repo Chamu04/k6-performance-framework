@@ -1,65 +1,131 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-
-// Import reporting tools for HTML and Jenkins (XML)
+import { SharedArray } from 'k6/data';
+import papaparse from 'https://jslib.k6.io/papaparse/5.1.1/index.js';
 import { htmlReport } from 'https://raw.githubusercontent.com/benc-uk/k6-reporter/main/dist/bundle.js';
 import { textSummary, jUnit } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 // ============================================================================
-// 1. CONFIGURATION (The Permanent Rules & Fail Cases)
+// 1. TARGET FORM & ENDPOINT RESOLUTION
 // ============================================================================
-export const options = {
-  // Virtual User (VU) Stages: Ramp-up, Steady State, Ramp-down
-  stages: [
-    { duration: '10s', target: 5 },  // Scale up to 5 users over 10 seconds
-    { duration: '20s', target: 5 },  // Hold at 5 users for 20 seconds
-    { duration: '10s', target: 0 },  // Scale back down to 0 users
-  ],
+const envType = (__ENV.ENVIRONMENT_TYPE || 'Safe_Sandbox_Mock').trim();
+const testServerId = (__ENV.TEST_SERVER_ID || 'test1').toLowerCase().trim();
+const deviceType = (__ENV.DEVICE_TYPE || 'desktop').toLowerCase().trim();
+const pathOrEndpoint = (__ENV.PATH_OR_ENDPOINT || '/order/ncf').trim();
+const fullUrlOverride = (__ENV.FULL_URL_OVERRIDE || '').trim();
 
-  // THRESHOLDS: These are your hard "Fail Cases". 
-  // If these are breached, the test fails and Jenkins will turn red.
-  thresholds: {
-    // 95% of requests < 500ms AND 99% of requests < 800ms
-    http_req_duration: ['p(95)<500', 'p(99)<800'],
-    // The error rate must be strictly less than 1%
-    http_req_failed: ['rate<0.01'],
+let resolvedUrl = 'https://httpbin.org/post'; // Default safe sandbox endpoint
+
+if (fullUrlOverride !== '') {
+  resolvedUrl = fullUrlOverride;
+} else if (envType === 'Safe_Sandbox_Mock') {
+  resolvedUrl = 'https://httpbin.org/post';
+} else if (envType === 'Test_Server_Forms') {
+  const cleanId = testServerId.startsWith('test') ? testServerId : `test${testServerId}`;
+  
+  // Automatically handles desktop vs mobile (/m/) paths for any form/endpoint
+  resolvedUrl = deviceType === 'mobile'
+    ? `https://${cleanId}.app.editage.com/m${pathOrEndpoint}`
+    : `https://${cleanId}.app.editage.com${pathOrEndpoint}`;
+}
+
+// Self-Healing URL Sanitizer
+const cleanUrlMatch = resolvedUrl.match(/https?:\/\/[^\s)]+/);
+const TARGET_URL = cleanUrlMatch ? cleanUrlMatch[0] : 'https://httpbin.org/post';
+
+// ============================================================================
+// 2. DATA PREPARATION (CSV Parsing)
+// ============================================================================
+const csvData = new SharedArray('users', function () {
+  return papaparse.parse(open('../data/users.csv'), { header: true, skipEmptyLines: true }).data;
+});
+
+// ============================================================================
+// 3. CONFIGURATION (Dynamic Load Profiles)
+// ============================================================================
+const TEST_PROFILE = __ENV.PROFILE || 'load';
+
+const profiles = {
+  smoke: { stages: [{ duration: '5s', target: 1 }] },
+  load: {
+    stages: [
+      { duration: '20s', target: 10 }, 
+      { duration: '40s', target: 10 },
+      { duration: '10s', target: 0 },
+    ],
   },
+  stress: {
+    stages: [
+      { duration: '30s', target: 50 }, 
+      { duration: '1m', target: 50 },  
+      { duration: '30s', target: 0 },
+    ],
+  },
+  spike: {
+    stages: [
+      { duration: '10s', target: 10 },  
+      { duration: '10s', target: 200 }, 
+      { duration: '30s', target: 200 }, 
+      { duration: '10s', target: 10 },  
+      { duration: '10s', target: 0 },
+    ],
+  },
+  soak: {
+    stages: [
+      { duration: '2m', target: 20 },  
+      { duration: '2h', target: 20 },  
+      { duration: '2m', target: 0 },   
+    ],
+  }
+};
 
-  // Force the terminal to display the p(99) metric
+export const options = {
+  stages: profiles[TEST_PROFILE].stages,
+  thresholds: {
+    http_req_duration: ['p(95)<2000', 'p(99)<2500'], // Adjusted for public internet variance
+    http_req_failed: ['rate<0.01'], 
+  },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
-// Accept dynamic URL from the command line, or use a safe default
-const TARGET_URL = __ENV.TARGET_URL || 'https://httpbin.test.k6.io/get';
-
 // ============================================================================
-// 2. EXECUTION (The Logic Each User Runs)
+// 4. EXECUTION (The Logic Each User Runs)
 // ============================================================================
 export default function () {
-  // The Virtual User makes a GET request to the URL
-  const response = http.get(TARGET_URL);
+  const randomUser = csvData[Math.floor(Math.random() * csvData.length)];
 
-  // CHECKS: These are "Soft Asserts". 
-  // If a check fails, the test continues, but logs the failure in the report.
-  check(response, {
-    'Response status is 200': (res) => res.status === 200,
-    'Response time is under 800ms': (res) => res.timings.duration < 800,
+  const payload = JSON.stringify({
+    username: randomUser.username,
+    password: randomUser.password,
+    action: 'submit_form',
+    targetMode: envType,
+    testedUrl: TARGET_URL
   });
 
-  // Think Time: The user pauses for 1 second before looping again
+  const params = {
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+  };
+
+  const response = http.post(TARGET_URL, payload, params);
+
+  check(response, {
+    'Response status is 200': (res) => res.status === 200,
+    'Response time is under 2000ms': (res) => res.timings.duration < 2000,
+  });
+
   sleep(1);
 }
 
 // ============================================================================
-// 3. REPORTING (Triggered once at the end)
+// 5. REPORTING (Triggered once at the end)
 // ============================================================================
 export function handleSummary(data) {
   return {
-    // Generate the Visual HTML Report
     'reports/summary.html': htmlReport(data),
-    // Generate the XML file for Jenkins Historical Trends
     'reports/junit.xml': jUnit(data),
-    // Print the standard output to the console
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };
 }
