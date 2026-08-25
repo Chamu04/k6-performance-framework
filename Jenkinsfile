@@ -61,7 +61,21 @@ manager_omega,pass111'''
     post {
         always {
             dir('D:/Testing Goals/Performance Testing_K6_Javascript_New/performance-framework') {
+                // Archive raw report artifacts
                 archiveArtifacts artifacts: 'reports/summary.html', fingerprint: true, allowEmptyArchive: false
+                
+                // Publish interactive HTML report directly to the Jenkins build sidebar
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'summary.html',
+                    reportName: 'k6 Performance HTML Report',
+                    reportTitles: 'k6 Load Test Summary'
+                ])
+                
+                // Publish JUnit test results for historical pass/fail trend graphs
                 junit 'reports/junit.xml'
             }
         }
