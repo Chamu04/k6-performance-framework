@@ -38,6 +38,13 @@ pipeline {
         stage('Prepare Test Data') {
             steps {
                 dir('D:/Testing Goals/Performance Testing_K6_Javascript_New/performance-framework') {
+                    // Ensure the reports directory exists and clear old test runs
+                    bat '''
+                        if not exist reports mkdir reports
+                        if not exist data mkdir data
+                        del /q reports\\*.* 2>nul || exit 0
+                    '''
+                    
                     writeFile file: 'data/users.csv', text: '''username,password
 admin_alpha,pass123
 tester_beta,pass456
@@ -61,10 +68,13 @@ manager_omega,pass111'''
     post {
         always {
             dir('D:/Testing Goals/Performance Testing_K6_Javascript_New/performance-framework') {
-                // Archive raw report artifacts
-                archiveArtifacts artifacts: 'reports/summary.html', fingerprint: true, allowEmptyArchive: false
+                // 1. Archive raw report artifacts (both HTML and XML)
+                archiveArtifacts artifacts: 'reports/*.*', fingerprint: true, allowEmptyArchive: true
                 
-                // Publish interactive HTML report directly to the Jenkins build sidebar
+                // 2. Publish native Jenkins test result trend (pass/fail badges & metrics)
+                junit testResults: 'reports/junit.xml', allowEmptyResults: true
+                
+                // 3. Publish interactive HTML report to the build sidebar
                 publishHTML([
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
@@ -74,10 +84,10 @@ manager_omega,pass111'''
                     reportName: 'k6 Performance HTML Report',
                     reportTitles: 'k6 Load Test Summary'
                 ])
-                
-                // Publish JUnit test results for historical pass/fail trend graphs
-                junit 'reports/junit.xml'
             }
+        }
+        failure {
+            echo "Performance run failed or thresholds were breached."
         }
     }
 }
