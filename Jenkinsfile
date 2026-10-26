@@ -3,14 +3,13 @@ pipeline {
 
     options {
         timeout(time: 15, unit: 'MINUTES')
-        ansiColor('xterm')
     }
 
     parameters {
         choice(
             name: 'ENVIRONMENT_TYPE',
-            choices: ['Demo_Sandbox', 'Test_Server_Forms'],
-            description: 'Demo_Sandbox targets test.k6.io (safe for load testing). Test_Server_Forms targets internal servers.'
+            choices: ['Demo_Sandbox', 'Safe_Sandbox_Mock', 'Test_Server_Forms'],
+            description: 'Target test environment. Demo_Sandbox & Safe_Sandbox_Mock target external sandboxes.'
         )
         string(
             name: 'TEST_SERVER_ID',
@@ -20,22 +19,22 @@ pipeline {
         choice(
             name: 'DEVICE_TYPE',
             choices: ['desktop', 'mobile'],
-            description: 'Layout emulation'
+            description: 'Device layout and user-agent emulation'
         )
         string(
             name: 'PATH_OR_ENDPOINT',
-            defaultValue: '/login.php',
-            description: 'Endpoint path'
+            defaultValue: '/order/ncf',
+            description: 'Base form page path'
         )
         string(
             name: 'FULL_URL_OVERRIDE',
             defaultValue: '',
-            description: 'Optional direct URL override'
+            description: 'Optional complete direct URL override'
         )
         choice(
             name: 'PROFILE',
             choices: ['load', 'smoke', 'stress', 'spike'],
-            description: 'Workload concurrency profile'
+            description: 'k6 workload concurrency profile'
         )
     }
 
@@ -44,7 +43,6 @@ pipeline {
             steps {
                 bat '''
                     if not exist "reports" mkdir reports
-                    del /Q reports\\*.* 2>nul || exit 0
                 '''
             }
         }
@@ -84,10 +82,10 @@ pipeline {
             archiveArtifacts artifacts: 'reports/*.*', allowEmptyArchive: true
         }
         success {
-            echo "k6 load test executed successfully against demo sandbox without impacting test1 server."
+            echo "k6 load test execution completed successfully within SLA thresholds."
         }
         failure {
-            echo "Performance run encountered threshold failures. Check reports/summary.html for details."
+            echo "k6 performance run encountered failures or exceeded thresholds. Inspect reports/summary.html for details."
         }
     }
 }

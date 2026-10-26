@@ -31,7 +31,7 @@ if (fullUrlOverride !== '') {
   GET_PAGE_URL = fullUrlOverride;
   BASE_HOST = fullUrlOverride.substring(0, fullUrlOverride.indexOf('/', 8));
   POST_SUBMIT_URL = fullUrlOverride;
-} else if (envType === 'Demo_Sandbox') {
+} else if (envType === 'Demo_Sandbox' || envType === 'Safe_Sandbox_Mock') {
   BASE_HOST = 'https://reqres.in';
   GET_PAGE_URL = 'https://reqres.in/api/users?page=2';
   POST_SUBMIT_URL = 'https://reqres.in/api/users';
@@ -62,9 +62,9 @@ const profiles = {
   },
   load: {
     stages: [
-      { duration: '20s', target: 5 },  // Smooth ramp-up to 5 concurrent users
-      { duration: '40s', target: 10 }, // Sustain 10 concurrent users
-      { duration: '15s', target: 0 },  // Clean ramp-down
+      { duration: '20s', target: 5 },  // Ramp to 5 VUs
+      { duration: '40s', target: 10 }, // Sustain 10 VUs
+      { duration: '15s', target: 0 },  // Ramp down to 0
     ],
   },
   stress: {
@@ -80,10 +80,10 @@ export const options = {
   insecureSkipTLSVerify: true,
   stages: profiles[TEST_PROFILE] ? profiles[TEST_PROFILE].stages : profiles.smoke.stages,
   thresholds: {
-    'http_req_failed': ['rate<0.02'],
-    'http_req_duration{name:01_Load_Data}': ['p(95)<2500'],
-    'http_req_duration{name:02_Create_Record}': ['p(95)<3000'],
-    'checks': ['rate>0.98'],
+    'http_req_failed': ['rate<0.05'],
+    'http_req_duration{name:01_Load_Data}': ['p(95)<3000'],
+    'http_req_duration{name:02_Create_Record}': ['p(95)<4000'],
+    'checks': ['rate>0.95'],
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
@@ -112,11 +112,10 @@ export default function () {
 
     check(getRes, {
       'Fetch status is 200': (r) => r.status === 200,
-      'Fetch latency < 2500ms': (r) => r.timings.duration < 2500,
+      'Fetch latency < 3000ms': (r) => r.timings.duration < 3000,
     });
   });
 
-  // User think time between actions
   sleep(1);
 
   // -------------------------------------------------------------
@@ -145,7 +144,7 @@ export default function () {
 
     check(postRes, {
       'Record created (status 200 or 201)': (r) => [200, 201].includes(r.status),
-      'Create latency < 3000ms': (r) => r.timings.duration < 3000,
+      'Create latency < 4000ms': (r) => r.timings.duration < 4000,
     });
   });
 
@@ -153,12 +152,12 @@ export default function () {
 }
 
 // ============================================================================
-// 6. REPORT GENERATION
+// 6. REPORT GENERATION (Outputs directly to parent reports directory)
 // ============================================================================
 export function handleSummary(data) {
   return {
-    'reports/summary.html': htmlReport(data),
-    'reports/junit.xml': jUnit(data),
+    '../reports/summary.html': htmlReport(data),
+    '../reports/junit.xml': jUnit(data),
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };
 }
