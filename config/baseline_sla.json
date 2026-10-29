@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "allowed_latency_regression_percent": 15,
+  "max_allowed_error_rate_percent": 2.0,
+  "global_sla": {
+    "http_req_failed_max_rate": 0.02,
+    "checks_min_pass_rate": 0.98
+  },
+  "endpoints": {
+    "01_Load_Order_Page": {
+      "target_p95_ms": 2000,
+      "max_acceptable_p95_ms": 2300,
+      "type": "read"
+    },
+    "02_Fetch_Plans": {
+      "target_p95_ms": 1500,
+      "max_acceptable_p95_ms": 1725,
+      "type": "read"
+    },
+    "03_Fetch_Addons": {
+      "target_p95_ms": 1500,
+      "max_acceptable_p95_ms": 1725,
+      "type": "read"
+    },
+    "04_Calculate_TAT": {
+      "target_p95_ms": 2000,
+      "max_acceptable_p95_ms": 2300,
+      "type": "read"
+    },
+    "05_Submit_Order": {
+      "target_p95_ms": 3500,
+      "max_acceptable_p95_ms": 4025,
+      "type": "write"
+    }
+  }
+}

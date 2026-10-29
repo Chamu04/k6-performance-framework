@@ -152,12 +152,13 @@ export default function () {
 }
 
 // ============================================================================
-// 6. REPORT GENERATION (Outputs directly to parent reports directory)
+// 4. REPORT GENERATION
 // ============================================================================
 export function handleSummary(data) {
   return {
     '../reports/summary.html': htmlReport(data),
     '../reports/junit.xml': jUnit(data),
+    '../reports/summary.json': JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };
 }

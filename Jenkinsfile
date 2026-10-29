@@ -9,17 +9,17 @@ pipeline {
         choice(
             name: 'ENVIRONMENT_TYPE',
             choices: ['Demo_Sandbox', 'Safe_Sandbox_Mock', 'Test_Server_Forms'],
-            description: 'Target test environment. Demo_Sandbox & Safe_Sandbox_Mock target external sandboxes.'
+            description: 'Target test environment'
         )
         string(
             name: 'TEST_SERVER_ID',
             defaultValue: 'test1',
-            description: 'Server ID prefix (used when targeting internal test servers)'
+            description: 'Server ID prefix'
         )
         choice(
             name: 'DEVICE_TYPE',
             choices: ['desktop', 'mobile'],
-            description: 'Device layout and user-agent emulation'
+            description: 'Device layout'
         )
         string(
             name: 'PATH_OR_ENDPOINT',
@@ -33,7 +33,7 @@ pipeline {
         )
         choice(
             name: 'PROFILE',
-            choices: ['load', 'smoke', 'stress', 'spike'],
+            choices: ['smoke', 'load', 'stress', 'spike'],
             description: 'k6 workload concurrency profile'
         )
     }
@@ -49,19 +49,25 @@ pipeline {
 
         stage('Execute k6 Performance Tests') {
             steps {
-                dir('scripts') {
-                    bat """
-                        k6 run ^
-                        --insecure-skip-tls-verify ^
-                        -e ENVIRONMENT_TYPE="${params.ENVIRONMENT_TYPE}" ^
-                        -e TEST_SERVER_ID="${params.TEST_SERVER_ID}" ^
-                        -e DEVICE_TYPE="${params.DEVICE_TYPE}" ^
-                        -e PATH_OR_ENDPOINT="${params.PATH_OR_ENDPOINT}" ^
-                        -e FULL_URL_OVERRIDE="${params.FULL_URL_OVERRIDE}" ^
-                        -e PROFILE="${params.PROFILE}" ^
-                        url_load_test.js
-                    """
-                }
+                bat """
+                    k6 run ^
+                    --insecure-skip-tls-verify ^
+                    -e ENVIRONMENT_TYPE="${params.ENVIRONMENT_TYPE}" ^
+                    -e TEST_SERVER_ID="${params.TEST_SERVER_ID}" ^
+                    -e DEVICE_TYPE="${params.DEVICE_TYPE}" ^
+                    -e PATH_OR_ENDPOINT="${params.PATH_OR_ENDPOINT}" ^
+                    -e FULL_URL_OVERRIDE="${params.FULL_URL_OVERRIDE}" ^
+                    -e PROFILE="${params.PROFILE}" ^
+                    scripts/url_load_test.js
+                """
+            }
+        }
+
+        stage('Enforce CI/CD Performance Gate') {
+            steps {
+                bat '''
+                    node scripts\\gate_breaker.js
+                '''
             }
         }
     }
@@ -82,10 +88,10 @@ pipeline {
             archiveArtifacts artifacts: 'reports/*.*', allowEmptyArchive: true
         }
         success {
-            echo "k6 load test execution completed successfully within SLA thresholds."
+            echo "k6 performance run completed within SLA thresholds and passed the CI/CD Quality Gate."
         }
         failure {
-            echo "k6 performance run encountered failures or exceeded thresholds. Inspect reports/summary.html for details."
+            echo "k6 performance run encountered errors or breached SLA thresholds. Build has been halted."
         }
     }
 }
